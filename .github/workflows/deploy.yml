@@ -1,0 +1,25 @@
+name: Gaze Through the Dragons Eyes Eye
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  retrieve:
+    name: Echoes in the Cloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Invoke the Sigil (Configure AWS Credentials)
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/AWSServicesRoleForGithub-jovb4kjb
+          aws-region: us-west-2
+
+      - name: Gaze Through the Eyes of the Dragon
+        run: |
+          echo "🌫️ Reaching through the eyes of the dragon..."
+          aws s3 cp s3://${{ secrets.S3_BUCKET }}/github/ . --recursive

